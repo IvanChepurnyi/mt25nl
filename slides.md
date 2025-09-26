@@ -195,16 +195,10 @@ layout: fact
 </v-clicks>
 
 ---
+layout: fact
+---
 
-# Better Approach
-
-<v-clicks>
-
-⚙️ Store each merged layout handle scope as PHP include
-
-📦 Loads data from DB for widgets
-
-</v-clicks>
+# Fix the N+1 problem
 
 ---
 layout: fact
