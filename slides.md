@@ -3,7 +3,7 @@ theme: dracula
 canvasWidth: 700
 layout: cover
 text-align: center
-title: Optimizing Cache for Saving Cash
+title: Redis Cache is considered harmful
 ---
 
 # Redis Cache is considered harmful* 
@@ -30,60 +30,121 @@ title: Optimizing Cache for Saving Cash
 layout: fact
 ---
 
-## Cache Types
+# Redis is a **Database**
 
 ---
 layout: fact
 ---
 
-<img src="/cache-types.svg">
-
----
-layout: fact
----
-
-<img src="/cache-types-expensive.svg">
-
----
-layout: fact
----
-
-<img src="/cache-types-better.svg">
+<img src="/cache-internals.svg">
 
 ---
 
-# Low cache hit ratio
+# Product Save
 
 <v-clicks>
 
-🗂️ Too much cache variations
+➡️ Clears cache by defined tags
 
-🔄 High frequency of updates
+🔃 Loads list of keys from cache tag entry
 
-🚫 Aggressive cache eviction
+⛔ Deletes keys one by one
+
+</v-clicks>
+
+---
+layout: fact
+---
+
+# Results in 1k+ Redis Ops
+
+---
+layout: fact
+---
+
+## Don't use Redis for caching products
+
+---
+
+# Fix these instead
+
+<v-clicks>
+
+🚀 N+1 queries with pre-loaders
+
+✅ Use `used_in_product_listing` attribute
+
+🗂️ Utilize / write indexers instead
+
+</v-clicks>
+
+---
+layout: fact
+---
+
+<img src="/cache-types-part1.svg">
+
+---
+layout: fact
+---
+
+<img src="/cache-types-part2.svg">
+
+---
+layout: fact
+---
+
+<img src="/cache-types-part3.svg">
+
+---
+layout: fact
+---
+
+# Configuration Cache
+
+---
+
+# Problem: Configuration Cache
+
+<v-clicks>
+
+🤦🏻 700KB cache entry size on 3 store views
+
+📁 99.9% of uncached time spend on reading xml files
 
 </v-clicks>
 
 ---
 
-# Possible solutions
+# Time spent on DB
+
+<v-click>
+
+<img src="/time-spend-on-db.png" class="m-15 h-100%" />
+
+</v-click>
+
+---
+
+# Better Approach
 
 <v-clicks>
 
-✂️ Reduce cache variations by splitting cache records
+⚙️ Store each configuration scope as PHP include
 
-🛠️ Remove cache and optimize underlying slow generation
-
-📬 Queue cache flushes in batches
-
-⚙️ Atomic cache writes / soft purging
+📦 Loads data from DB for a scope as value override
 
 </v-clicks>
+
+---
+layout: fact
+---
+
+# Layout Cache
 
 ---
 
 # Problem: Layout Cache
-
 
 <v-clicks>
 
@@ -97,61 +158,31 @@ layout: fact
 
 ---
 
-# Source: Entity Specific Handles
-
-```php {all|4,9}
-public function addPageLayoutHandles(
-  array $parameters = [], 
-  $defaultHandle = null, 
-  $entitySpecific = true
- ) {
-    // ...
-    foreach ($parameters as $key => $value) {
-        // ...
-        $pageHandle = $handle . '_' . $key . '_' . $value;
-        $pageHandles[] = $pageHandle;
-        if ($entitySpecific) {
-            $this->entitySpecificHandlesList->addHandle($pageHandle);
-        }
-    }
-}
-```
-
----
-
-# Quickfix
+# Better Approach
 
 <v-clicks>
 
-🔌 Create plugin for `Magento\Framework\View\Result\Page`
+⚙️ Store each merged layout handle scope as PHP include
 
-✅ If `$entitySpecific` parameter equals true, return without executing the original method
+📦 Loads data from DB for widgets
 
 </v-clicks>
 
 ---
+layout: fact
+---
 
-# Example Code
+<img src="/cache-types-better.svg">
 
-```php {all|6,8|9|11}
-class RemoveEntityCache
-{
-    public function aroundAddPageLayoutHandles(
-        Page $subject, callable $proceed, array $parameters = [], 
-        $defaultHandle = null, 
-        $entitySpecific = true
-    ) {
-        if ($entitySpecific) {
-            return true;
-        }
-        return $proceed($parameters, $defaultHandle, $entitySpecific);
-    }
-}
-```
+---
+layout: fact
+---
+
+# Collection Data
 
 ---
 
-# Problem: Configurable Products
+# Example: Configurable Products
 
 <v-clicks>
 
@@ -165,155 +196,96 @@ class RemoveEntityCache
 
 ---
 
-# Quickfix
-
-<v-click>
-
-🚫 Disable `used_products_cache` plugin on `Magento\ConfigurableProduct\Model\Product\Type\Configurable`  
-
-</v-click>
-
-
----
-
-# DI Config for Frontend
-
-```xml
-<type name="Magento\ConfigurableProduct\Model\Product\Type\Configurable">
-    <plugin name="used_products_cache" disabled="true" />
-</type>
-```
-
----
-
-# Result
-
-😱 With both fixes applied it reduces max Redis cache usage to under 20 Mbytes on most datasets
-
----
-
-# Problem: Low Varnish Hit Ratio
+# Better Approach
 
 <v-clicks>
 
-🍪 `X-Magento-Vary` cookie affects page variations in cache
+⚙️ Store each merged layout handle scope as PHP include
 
-🛠️ Generated based on values set in `Magento\Framework\App\Http\Context`
-
-</v-clicks>
-
----
-
-# Possible Solution
-
-<v-clicks>
-
-🔓 Remove dependency on HTTP context
-
-🔑 Create own unique values if content differs
-
-🧹 Add soft purging with XKey/YKey
-
+📦 Loads data from DB for widgets
 
 </v-clicks>
-
----
-
-# Problem: Double Rendering
-
-<v-clicks>
-
-🖼️ Rendering of ESI blocks still happens even when block is replaced with `<esi:include />` snippet
-
-</v-clicks>
-
----
-
-# Quickfix
-
-<v-click>
-
-🚫 Prevent rendering by around plugin on `renderNonCachedElement` of `Magento\Framework\View\Layout`
-
-</v-click>
-
----
-
-# Example Code
-
-```php{all|6|7|8|10|11}
-class SkipRenderLayoutElement
-{
-    public function aroundRenderNonCachedElement(
-      Layout $layout, callable $proceed, string $name
-    ) {
-        if ($this->pageCacheConfig->isEnabled()
-            && $this->pageCacheConfig->getType() === Config::VARNISH
-            && $layout->isCacheable()) {
-            $block = $layout->getBlock($name);
-            if ($block instanceof AbstractBlock && $block->getTtl() !== null) {
-                return '';
-            }
-        }
-        return $proceed($name);
-    }
-}
-```
-
----
-
-# Problem: Cacheable Shopping Cart
-
-<v-clicks>
-
-🛒 Persistent Shopping Cart checks on every cacheable page if the cart expired
-
-⚠️ Full cart load operation gets triggered on unrelated page
-
-</v-clicks>
-
----
-
-# Quickfix
-
-<v-clicks>
-
-🔌 Create plugin for `Magento\Persistent\Helper\Data`
-
-🛠️ Create after-plugin for `canProcess()` method
-
-🚫 Prevent triggering observer if request path does not match `/customer` or `/checkout` paths
-
-</v-clicks>
-
----
-
-
-# Example Code
-
-```php{all|6|7|8|9|10}
-class PreventRunningObserverPlugin
-{
-    public function afterCanProcess(
-        Data $subject, bool $result, $observer
-    ) {
-        if ($request = $observer->getRequest()) {
-            if ($request->isGet()
-                && !str_starts_with($request->getRequestUri(), '/checkout')
-                && !str_starts_with($request->getRequestUri(), '/customer')) {
-                return false;
-            }
-        }
-        return $result;
-    }
-}
-```
 
 ---
 layout: fact
 ---
 
-# Demo Time
+<img src="/cache-types-better-part2.svg">
+
+
+---
+layout: fact
+---
+
+# Block HTML Cache
+
+---
+
+# Example: Price Block Cache
+
+<v-clicks>
+
+📈 Cache size grows with your catalog
+
+🚫 Too volatile as it gets flushed on almost every product sale
+
+</v-clicks>
+
+---
+layout: fact
+---
+
+# Fix the N+1 problem 
+
+---
+
+# Example: Top Menu
+
+<v-clicks>
+
+⏲️ Slow generation because of an in-effective query
+
+</v-clicks>
+
+---
+
+# Better Approach
+
+<v-clicks>
+
+⚙️ Move cache into FPC by `ttl` attribute
+
+🚀 Optimize a query to not use `LIKE '%/2/%`
+
+</v-clicks>
+
+---
+layout: fact
+---
+
+<img src="/cache-types-better-part3.svg">
+
+---
+layout: fact
+---
+
+# Good News 
+
+---
+
+# Sponsorship Program
+
+https://github.com/sponsors/EcomDev/
+
+Sponsors get perks:
+
+<v-clicks>
+
+- Early access to build optimizations
+- Access to N+1 optimization packages
+- Access to Adobe Commerce specific optimizations
+
+</v-clicks>
 
 ---
 layout: fact
@@ -321,4 +293,4 @@ layout: fact
 # Thank You!
 
 Access slides here:
-https://ivanchepurnyi.github.io/mm25in
+https://ivanchepurnyi.github.io/mt25nl/
